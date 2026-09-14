@@ -32,6 +32,21 @@ export const api = {
       parking: { ura: IntegrationProviderStatus; hdb: IntegrationProviderStatus }
     }>('/integrations/status')
   },
+  searchLocations(query: string) {
+    const params = new URLSearchParams({ query })
+    return request<{ latitude: number; longitude: number; label?: string }[]>(
+      `/stations/search-locations?${params}`,
+    )
+  },
+  resolveLocation(query?: string, latitude?: number, longitude?: number) {
+    const params = new URLSearchParams()
+    if (query) params.set('query', query)
+    if (latitude !== undefined) params.set('latitude', String(latitude))
+    if (longitude !== undefined) params.set('longitude', String(longitude))
+    return request<{ latitude: number; longitude: number; label: string }>(
+      `/stations/resolve-location?${params}`,
+    )
+  },
   getDrivingRoute(
     origin: Pick<StationLocation, 'latitude' | 'longitude'>,
     destination: Pick<StationLocation, 'latitude' | 'longitude'>,

@@ -175,12 +175,19 @@ select:focus-visible {
 }
 .search-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 1.8fr) minmax(180px, 1fr) 112px;
+  grid-template-columns: auto minmax(280px, 1.8fr) minmax(180px, 1fr) 112px;
   align-items: end;
   gap: 12px;
 }
+.search-mode-toggle {
+  grid-row: 1 / 3;
+}
+.search-grid .location-field {
+  min-height: 42px;
+}
 .search-button {
   height: 42px;
+  grid-row: 1 / 3;
 }
 .search-grid .mantine-Input-input {
   min-height: 42px;
@@ -1003,6 +1010,12 @@ select:focus-visible {
 .legend-you {
   background: #3784cf;
 }
+.legend-destination-route {
+  background: linear-gradient(90deg, #2563eb 0%, #2563eb 40%, transparent 40%, transparent 60%, #2563eb 60%, #2563eb 100%);
+}
+.legend-selected-route {
+  background: #dc2626;
+}
 .map-disclaimer {
   margin-top: 8px;
   color: #818b85;
@@ -1468,10 +1481,19 @@ select:focus-visible {
     padding-top: 34px;
   }
   .search-grid {
-    grid-template-columns: 1.5fr 1fr;
+    grid-template-columns: auto 1fr;
+  }
+  .search-grid .location-field {
+    grid-column: span 2;
+  }
+  .search-mode-toggle {
+    grid-column: 1 / 3;
+    grid-row: auto;
   }
   .search-button {
     width: 100%;
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 @media (max-width: 620px) {

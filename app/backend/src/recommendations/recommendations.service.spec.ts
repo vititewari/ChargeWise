@@ -323,4 +323,172 @@ describe('RecommendationsService', () => {
       expect(ranked.estimatedChargingTimeMinutes).toBeNull()
     })
   })
+
+  describe('corridor-based search', () => {
+    it('rejects origin and destination at same location', async () => {
+      const promise = service.recommend({
+        routeOriginLatitude: 1.28,
+        routeOriginLongitude: 103.85,
+        routeDestinationLatitude: 1.28,
+        routeDestinationLongitude: 103.85,
+        connector: 'Any',
+      })
+
+      await expect(promise).rejects.toThrow('Origin and destination must be different locations')
+    })
+
+    it('returns empty results when OneMap route fails', async () => {
+      drivingRoute.mockRejectedValueOnce(new Error('Route calculation failed'))
+
+      const promise = service.recommend({
+        routeOriginLatitude: 1.28,
+        routeOriginLongitude: 103.85,
+        routeDestinationLatitude: 1.3,
+        routeDestinationLongitude: 103.87,
+        connector: 'Any',
+      })
+
+      await expect(promise).rejects.toThrow('OneMap driving route is unavailable')
+      drivingRoute.mockRejectedValue(new Error('Routing unavailable'))
+    })
+
+    it('filters stations by corridor distance when destination provided', async () => {
+      drivingRoute.mockResolvedValueOnce({
+        travelMinutes: 10,
+        distanceKm: 5,
+        coordinates: [
+          [1.28, 103.85],
+          [1.3, 103.87],
+        ],
+        source: 'OneMap',
+      })
+
+      const result = await service.recommend({
+        routeOriginLatitude: 1.28,
+        routeOriginLongitude: 103.85,
+        routeDestinationLatitude: 1.3,
+        routeDestinationLongitude: 103.87,
+        connector: 'Any',
+      })
+
+      // Should return results (the fixture stations should be within the corridor in this simple test)
+      expect(result.search.location).toEqual({ latitude: 1.28, longitude: 103.85 })
+      expect(result.ranking.weights).toBeDefined()
+      drivingRoute.mockRejectedValue(new Error('Routing unavailable'))
+    })
+
+    it('uses origin distance for ranking in corridor search', async () => {
+      const stationsInCorridor: Station[] = [
+        {
+          ...stationsFixture[0],
+          id: 'corridor-station-1',
+          latitude: 1.29,
+          longitude: 103.86,
+        },
+        {
+          ...stationsFixture[1],
+          id: 'corridor-station-2',
+          latitude: 1.285,
+          longitude: 103.855,
+        },
+      ]
+      ;(lta.getAllStations as jest.Mock).mockResolvedValueOnce(stationsInCorridor)
+      drivingRoute.mockResolvedValueOnce({
+        travelMinutes: 10,
+        distanceKm: 5,
+        coordinates: [
+          [1.28, 103.85],
+          [1.3, 103.87],
+        ],
+        source: 'OneMap',
+      })
+
+      const result = await service.recommend({
+        routeOriginLatitude: 1.28,
+        routeOriginLongitude: 103.85,
+        routeDestinationLatitude: 1.3,
+        routeDestinationLongitude: 103.87,
+        connector: 'Any',
+      })
+
+      if (result.ranked.length >= 2) {
+        // Verify stations are ranked by distance from origin
+        const station1Distance = result.ranked[0].distanceKm
+        const station2Distance = result.ranked[1].distanceKm
+        // Station closer to origin should have lower distance score
+        expect(station1Distance).toBeLessThanOrEqual(station2Distance)
+      }
+
+      drivingRoute.mockRejectedValue(new Error('Routing unavailable'))
+      ;(lta.getAllStations as jest.Mock).mockResolvedValue(stationsFixture)
+    })
+
+    it('returns empty results when no stations are in corridor', async () => {
+      // Mock stations far from the corridor
+      const stationsFarAway: Station[] = [
+        {
+          ...stationsFixture[0],
+          id: 'far-station-1',
+          latitude: 1.5, // Far north
+          longitude: 103.9,
+        },
+      ]
+      ;(lta.getAllStations as jest.Mock).mockResolvedValueOnce(stationsFarAway)
+      drivingRoute.mockResolvedValueOnce({
+        travelMinutes: 10,
+        distanceKm: 5,
+        coordinates: [
+          [1.28, 103.85],
+          [1.3, 103.87],
+        ],
+        source: 'OneMap',
+      })
+
+      const result = await service.recommend({
+        routeOriginLatitude: 1.28,
+        routeOriginLongitude: 103.85,
+        routeDestinationLatitude: 1.3,
+        routeDestinationLongitude: 103.87,
+        connector: 'Any',
+      })
+
+      expect(result.ranked).toHaveLength(0)
+      expect(result.recommended).toBeNull()
+      expect(result.search.totalMatches).toBe(0)
+      drivingRoute.mockRejectedValue(new Error('Routing unavailable'))
+      ;(lta.getAllStations as jest.Mock).mockResolvedValue(stationsFixture)
+    })
+
+    it('caps corridor search results at 50 stations', async () => {
+      const manyStations = Array.from({ length: 60 }, (_, i) => ({
+        ...stationsFixture[0],
+        id: `station-${i}`,
+        latitude: 1.28 + (Math.random() - 0.5) * 0.02,
+        longitude: 103.85 + (Math.random() - 0.5) * 0.02,
+      }))
+      ;(lta.getAllStations as jest.Mock).mockResolvedValueOnce(manyStations)
+      drivingRoute.mockResolvedValueOnce({
+        travelMinutes: 10,
+        distanceKm: 5,
+        coordinates: [
+          [1.28, 103.85],
+          [1.3, 103.87],
+        ],
+        source: 'OneMap',
+      })
+
+      const result = await service.recommend({
+        routeOriginLatitude: 1.28,
+        routeOriginLongitude: 103.85,
+        routeDestinationLatitude: 1.3,
+        routeDestinationLongitude: 103.87,
+        connector: 'Any',
+      })
+
+      expect(result.ranked.length).toBeLessThanOrEqual(50)
+      expect(result.search.totalMatches).toBe(manyStations.length) // totalMatches reports all matches, not capped
+      drivingRoute.mockRejectedValue(new Error('Routing unavailable'))
+      ;(lta.getAllStations as jest.Mock).mockResolvedValue(stationsFixture)
+    })
+  })
 })

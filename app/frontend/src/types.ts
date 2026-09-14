@@ -4,6 +4,12 @@ export type RankingFactor = 'distance' | 'availability' | 'speed' | 'savings'
 export type RankingImportance = 0 | 1 | 2 | 4 | 8
 export type RankingWeightSource = 'preset' | 'inferred preferences' | 'explicit percentages'
 
+export interface LocationInput {
+  latitude: number
+  longitude: number
+  label?: string
+}
+
 export interface RankingWeights {
   distance: number
   availability: number
@@ -131,6 +137,8 @@ export type RecommendationRequest = AiRecommendationFilters & {
   routeFromCurrentLocation?: boolean
   routeOriginLatitude?: number
   routeOriginLongitude?: number
+  routeDestinationLatitude?: number
+  routeDestinationLongitude?: number
   rankingPreferences?: RankingPreferences
 }
 

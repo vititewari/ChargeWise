@@ -27,6 +27,8 @@ interface MapPanelProps {
   onSelect: (station: RankedStation) => void
   location: MapLocation
   routeOrigin?: MapLocation
+  routeDestination?: MapLocation
+  destinationRoute?: DrivingRoute | null
   currentLocation?: Pick<MapLocation, 'latitude' | 'longitude'> & { accuracy: number }
   route?: DrivingRoute | null
   routeStation?: RankedStation | null
@@ -39,6 +41,8 @@ function MapViewport({
   location,
   route,
   routeOrigin,
+  routeDestination,
+  destinationRoute,
   routeStation,
   routeLoading,
   routeError,
@@ -47,6 +51,8 @@ function MapViewport({
   location: MapLocation
   route?: DrivingRoute | null
   routeOrigin?: MapLocation
+  routeDestination?: MapLocation
+  destinationRoute?: DrivingRoute | null
   routeStation?: RankedStation | null
   routeLoading?: boolean
   routeError?: string
@@ -61,13 +67,23 @@ function MapViewport({
           [routeStation.latitude, routeStation.longitude] as [number, number],
         ]
       : []
+  const destinationPoints =
+    routeOrigin && routeDestination && destinationRoute
+      ? [
+          [routeOrigin.latitude, routeOrigin.longitude] as [number, number],
+          ...((destinationRoute.coordinates ?? []) as [number, number][]),
+          [routeDestination.latitude, routeDestination.longitude] as [number, number],
+        ]
+      : []
   const points: [number, number][] =
     routeStation && routeOrigin && (routeLoading || route || routeError)
-      ? routePoints
-      : [
-          [location.latitude, location.longitude],
-          ...stations.map((station) => [station.latitude, station.longitude] as [number, number]),
-        ]
+      ? [...routePoints, ...destinationPoints]
+      : routeOrigin && routeDestination && destinationRoute
+        ? destinationPoints
+        : [
+            [location.latitude, location.longitude],
+            ...stations.map((station) => [station.latitude, station.longitude] as [number, number]),
+          ]
   // Parent state changes frequently while a route loads. Depend on the effective
   // viewport instead of object identities/status flags so identical bounds are
   // not fitted repeatedly, which otherwise makes Leaflet reload the same tiles.
@@ -108,6 +124,8 @@ export const MapPanel = memo(function MapPanel({
   onSelect,
   location,
   routeOrigin,
+  routeDestination,
+  destinationRoute,
   currentLocation,
   route,
   routeStation,
@@ -168,6 +186,8 @@ export const MapPanel = memo(function MapPanel({
           stations={stations}
           location={location}
           routeOrigin={routeOrigin}
+          routeDestination={routeDestination}
+          destinationRoute={destinationRoute}
           route={route}
           routeStation={routeStation}
           routeLoading={routeLoading}
@@ -221,10 +241,16 @@ export const MapPanel = memo(function MapPanel({
             </Marker>
           )
         })}
+        {destinationRoute && destinationRoute.coordinates.length > 1 && (
+          <Polyline
+            positions={destinationRoute.coordinates}
+            pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.7, dashArray: '8,4' }}
+          />
+        )}
         {route && route.coordinates.length > 1 && (
           <Polyline
             positions={route.coordinates}
-            pathOptions={{ color: '#176dca', weight: 5, opacity: 0.88 }}
+            pathOptions={{ color: '#dc2626', weight: 5, opacity: 0.88 }}
           />
         )}
       </MapContainer>
@@ -297,6 +323,16 @@ export const MapPanel = memo(function MapPanel({
         {currentLocation && (
           <span>
             <i className="legend-you" /> Your location
+          </span>
+        )}
+        {destinationRoute && (
+          <span>
+            <i className="legend-destination-route" /> Route to destination
+          </span>
+        )}
+        {route && routeStation && (
+          <span>
+            <i className="legend-selected-route" /> Route to selected charger
           </span>
         )}
       </div>
