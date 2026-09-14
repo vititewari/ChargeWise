@@ -67,6 +67,8 @@ export interface RankedStation extends Station {
   travelSource: 'OneMap' | 'Straight-line estimate'
   estimatedHourlyCost: number | null
   hourlyCostIncludesParking: boolean
+  estimatedChargingTimeMinutes: number | null
+  chargingTimeIsApproximate: boolean
   reasons: string[]
   dataQualityNotices: string[]
   scoreComponents: Record<RankingFactor, number | null>

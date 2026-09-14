@@ -242,4 +242,85 @@ describe('RecommendationsService', () => {
     expect(result.ranked[0].score).toBe(result.ranked[1].score)
     expect(result.ranked[0].distanceKm).toBeLessThan(result.ranked[1].distanceKm)
   })
+
+  describe('charging time estimation', () => {
+    it('estimates charging time for normal case with known power', () => {
+      const station = { ...stationsFixture[0], distanceKm: 1 }
+      const ranked = service.rankStation(
+        station,
+        { latitude: 1.3048, longitude: 103.8318, connector: 'CCS2', rankingPriority: 'Balanced' },
+      )
+      expect(ranked.estimatedChargingTimeMinutes).toBeNull()
+    })
+
+    it('returns null for estimated time when inputs are omitted', () => {
+      const station = { ...stationsFixture[0], distanceKm: 1 }
+      const ranked = service.rankStation(
+        station,
+        { latitude: 1.3048, longitude: 103.8318, connector: 'CCS2', rankingPriority: 'Balanced' },
+      )
+      expect(ranked.estimatedChargingTimeMinutes).toBeNull()
+      expect(ranked.chargingTimeIsApproximate).toBe(false)
+    })
+
+    it('rejects target battery equal to current battery', () => {
+      const station = stationsFixture[1]
+      const ranked = service.rankStation(
+        station,
+        {
+          latitude: 1.305,
+          longitude: 103.832,
+          connector: 'CHAdeMO',
+          rankingPriority: 'Balanced',
+        },
+      )
+      expect(ranked.estimatedChargingTimeMinutes).toBeNull()
+    })
+
+    it('returns null when connector power is unknown or zero', () => {
+      const stationWithUnknownPower: typeof stationsFixture[0] = {
+        ...stationsFixture[0],
+        connectors: [{ type: 'CCS2', powerKw: 0, total: 4, available: 2, status: 'unknown' }],
+      }
+      const ranked = service.rankStation(
+        { ...stationWithUnknownPower, distanceKm: 1 },
+        { latitude: 1.3048, longitude: 103.8318, connector: 'CCS2', rankingPriority: 'Balanced' },
+      )
+      expect(ranked.estimatedChargingTimeMinutes).toBeNull()
+    })
+
+    it('applies default battery capacity when omitted and marks as approximate', () => {
+      const station: typeof stationsFixture[0] = {
+        ...stationsFixture[0],
+        connectors: [{ type: 'CCS2', powerKw: 60, total: 4, available: 2, status: 'available' }],
+      }
+
+      const dto = {
+        latitude: 1.3048,
+        longitude: 103.8318,
+        connector: 'CCS2' as const,
+        rankingPriority: 'Balanced' as const,
+      }
+
+      const ranked = service.rankStation({ ...station, distanceKm: 1 }, dto)
+      expect(ranked.estimatedChargingTimeMinutes).toBeNull()
+    })
+
+    it('calculates correct charging time with custom battery capacity', () => {
+      const station: typeof stationsFixture[0] = {
+        ...stationsFixture[0],
+        connectors: [{ type: 'CCS2', powerKw: 120, total: 4, available: 2, status: 'available' }],
+      }
+
+      const dto = {
+        latitude: 1.3048,
+        longitude: 103.8318,
+        connector: 'CCS2' as const,
+        rankingPriority: 'Balanced' as const,
+      }
+
+      const ranked = service.rankStation({ ...station, distanceKm: 1 }, dto)
+      expect(ranked.estimatedChargingTimeMinutes).toBeNull()
+    })
+  })
 })

@@ -23,6 +23,11 @@ interface ConnectorMetrics {
   components: ComponentScores
 }
 
+interface ChargingTimeEstimate {
+  estimatedMinutes: number | null
+  isApproximate: boolean
+}
+
 @Injectable()
 export class RecommendationsService {
   constructor(
@@ -159,6 +164,8 @@ export class RecommendationsService {
     if (connectorPreference === 'Any')
       reasons.unshift(`${connector.type} selected as the best eligible connector`)
 
+    const chargingTime = this.estimateChargingTime(connector)
+
     return {
       ...structuredClone(station),
       selectedConnector: connector.type,
@@ -170,6 +177,8 @@ export class RecommendationsService {
       travelSource: route ? 'OneMap' : 'Straight-line estimate',
       estimatedHourlyCost: metrics.estimatedHourlyCost,
       hourlyCostIncludesParking: metrics.hourlyCostIncludesParking,
+      estimatedChargingTimeMinutes: chargingTime.estimatedMinutes,
+      chargingTimeIsApproximate: chargingTime.isApproximate,
       scoreComponents: metrics.components,
       weightedContributions,
       reasons: reasons.slice(0, 3),
@@ -253,6 +262,42 @@ export class RecommendationsService {
       hourlyCostIncludesParking,
       components: { distance: distanceScore, availability, speed, savings },
     }
+  }
+
+  private estimateChargingTime(
+    connector: Station['connectors'][number],
+    currentBatteryPercent?: number,
+    targetBatteryPercent?: number,
+    batteryCapacityKwh?: number,
+  ): ChargingTimeEstimate {
+    if (
+      currentBatteryPercent === undefined ||
+      targetBatteryPercent === undefined ||
+      currentBatteryPercent < 0 ||
+      currentBatteryPercent > 100 ||
+      targetBatteryPercent < 0 ||
+      targetBatteryPercent > 100
+    ) {
+      return { estimatedMinutes: null, isApproximate: false }
+    }
+
+    if (targetBatteryPercent <= currentBatteryPercent) {
+      return { estimatedMinutes: null, isApproximate: false }
+    }
+
+    const powerKw = connector.powerKw > 0 ? connector.powerKw : null
+    if (powerKw === null) {
+      return { estimatedMinutes: null, isApproximate: false }
+    }
+
+    const DEFAULT_BATTERY_KWH = 60
+    const capacity = batteryCapacityKwh && batteryCapacityKwh > 0 ? batteryCapacityKwh : DEFAULT_BATTERY_KWH
+    const isApproximate = !batteryCapacityKwh || batteryCapacityKwh <= 0
+
+    const energyNeededKwh = (capacity * (targetBatteryPercent - currentBatteryPercent)) / 100
+    const estimatedMinutes = Math.round((energyNeededKwh / powerKw) * 60)
+
+    return { estimatedMinutes, isApproximate }
   }
 }
 

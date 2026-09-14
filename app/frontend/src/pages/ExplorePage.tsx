@@ -6,6 +6,7 @@ import { ChatWidget } from '../components/ChatWidget'
 import { MapPanel } from '../components/MapPanel'
 import { StationCard } from '../components/StationCard'
 import { StationDetailsModal } from '../components/StationDetailsModal'
+import { StationComparisonView } from '../components/StationComparisonView'
 import type {
   AiRecommendationFilters,
   ChatMessage,
@@ -72,6 +73,8 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
   const [chatLoading, setChatLoading] = useState(false)
   const [chatStatus, setChatStatus] = useState('')
   const [chatError, setChatError] = useState('')
+  const [selectedForComparison, setSelectedForComparison] = useState<Set<string>>(new Set())
+  const [showComparison, setShowComparison] = useState(false)
 
   const requestCurrentLocation = useCallback(
     () =>
@@ -152,6 +155,18 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
     setRouteError('')
   }, [])
 
+  const toggleCompareStation = useCallback((stationId: string, selected: boolean) => {
+    setSelectedForComparison((current) => {
+      const next = new Set(current)
+      if (selected && next.size < 3) {
+        next.add(stationId)
+      } else if (!selected) {
+        next.delete(stationId)
+      }
+      return next
+    })
+  }, [])
+
   const runSearch = async () => {
     if (!locationQuery.trim() && !searchCoords) {
       setError('Enter an address or postal code, or use your current location.')
@@ -160,6 +175,8 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
     const requestId = ++recommendationRequestId.current
     setLoading(true)
     setError('')
+    setSelectedForComparison(new Set())
+    setShowComparison(false)
     routeRequestId.current += 1
     setRoute(null)
     setRouteStationId(undefined)
@@ -415,6 +432,20 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
           </div>
           <div className="results-layout">
             <Stack className="station-list" gap={12}>
+              {selectedForComparison.size > 0 && (
+                <div className="comparison-action-bar">
+                  <span className="comparison-count">
+                    {selectedForComparison.size} station{selectedForComparison.size !== 1 ? 's' : ''} selected
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={() => setShowComparison(true)}
+                    disabled={selectedForComparison.size < 2}
+                  >
+                    Compare selected ({selectedForComparison.size})
+                  </Button>
+                </div>
+              )}
               {ranked.map((station, index) => (
                 <StationCard
                   key={station.id}
@@ -423,6 +454,9 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
                   best={index === 0}
                   onDetails={selectStation}
                   onHover={selectMapStation}
+                  onCompareToggle={toggleCompareStation}
+                  isSelectedForComparison={selectedForComparison.has(station.id)}
+                  canCompare={selectedForComparison.size < 3}
                 />
               ))}
             </Stack>
@@ -467,6 +501,13 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
           routeVisible={routeStationId === details.id && route !== null}
           routeLoading={routeStationId === details.id && routeLoading}
           routeError={routeStationId === details.id ? routeError : ''}
+        />
+      )}
+
+      {showComparison && selectedForComparison.size >= 2 && (
+        <StationComparisonView
+          stations={ranked.filter((station) => selectedForComparison.has(station.id))}
+          onBack={() => setShowComparison(false)}
         />
       )}
     </div>

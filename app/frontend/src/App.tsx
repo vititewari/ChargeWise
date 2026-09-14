@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Notification } from '@mantine/core'
-import { Zap } from 'lucide-react'
+import { Zap, Car } from 'lucide-react'
 import { ExplorePage } from './pages/ExplorePage'
+import { VehicleProfileModal } from './components/VehicleProfileModal'
+import { useVehicleProfile } from './hooks/useVehicleProfile'
 import { api } from './api'
 import type { IntegrationProviderStatus } from './types'
 
 export default function App() {
   const [toast, setToast] = useState<string | null>(null)
+  const [showVehicleProfile, setShowVehicleProfile] = useState(false)
+  const { profile, saveProfile } = useVehicleProfile()
   const [providers, setProviders] = useState<{
     ltaDataMall: IntegrationProviderStatus
     oneMap: IntegrationProviderStatus
@@ -53,6 +57,15 @@ export default function App() {
               </span>
             </div>
             <span className="header-purpose">Find a charger</span>
+            <button
+              className="my-vehicle-button"
+              onClick={() => setShowVehicleProfile(true)}
+              aria-label="My Vehicle settings"
+              title={profile?.batteryCapacityKwh ? `Battery: ${profile.batteryCapacityKwh} kWh` : 'Set vehicle profile'}
+            >
+              <Car size={18} />
+              <span>My Vehicle</span>
+            </button>
             <div className="live-indicator">
               <span /> {providerLabel}
             </div>
@@ -71,6 +84,14 @@ export default function App() {
         >
           {toast}
         </Notification>
+      )}
+
+      {showVehicleProfile && (
+        <VehicleProfileModal
+          onClose={() => setShowVehicleProfile(false)}
+          profile={profile}
+          onSave={saveProfile}
+        />
       )}
     </div>
   )
