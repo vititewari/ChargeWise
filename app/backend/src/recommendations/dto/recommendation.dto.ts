@@ -24,6 +24,8 @@ export class RecommendationDto {
   @IsOptional() @IsBoolean() routeFromCurrentLocation?: boolean
   @IsOptional() @Type(() => Number) @IsNumber() @Min(-90) @Max(90) routeOriginLatitude?: number
   @IsOptional() @Type(() => Number) @IsNumber() @Min(-180) @Max(180) routeOriginLongitude?: number
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(-90) @Max(90) routeDestinationLatitude?: number
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(-180) @Max(180) routeDestinationLongitude?: number
   @IsOptional()
   @IsIn(['Any', 'CCS2', 'Type 2', 'CHAdeMO'])
   connector: 'Any' | 'CCS2' | 'Type 2' | 'CHAdeMO' = 'Any'

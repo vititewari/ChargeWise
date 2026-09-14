@@ -42,6 +42,16 @@ export class StationsService {
     return structuredClone(station)
   }
 
+  async searchLocations(query?: string): Promise<LocationInput[]> {
+    if (!query?.trim()) return []
+    if (!this.oneMap.isConfigured()) return []
+    try {
+      return await this.oneMap.searchAddresses(query)
+    } catch (error) {
+      return []
+    }
+  }
+
   async resolveLocation(query?: string, latitude?: number, longitude?: number): Promise<LocationInput> {
     if (latitude !== undefined && longitude !== undefined) {
       return { latitude, longitude, label: query || 'Selected location' }

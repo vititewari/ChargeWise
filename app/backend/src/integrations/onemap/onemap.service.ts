@@ -57,6 +57,47 @@ export class OneMapService {
     }
   }
 
+  async searchAddresses(query: string): Promise<LocationInput[]> {
+    if (!this.isConfigured() || !query.trim()) return []
+    const cacheKey = `search:${query.trim().toLowerCase()}`
+    const cached = this.geocodeCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      // Return array from cached single location
+      return cached.value ? [structuredClone(cached.value)] : []
+    }
+    const url = new URL(`${this.baseUrl}/api/common/elastic/search`)
+    url.searchParams.set('searchVal', query)
+    url.searchParams.set('returnGeom', 'Y')
+    url.searchParams.set('getAddrDetails', 'Y')
+    url.searchParams.set('pageNum', '1')
+    try {
+      const payload = await this.authorizedJson<OneMapSearchResponse>(
+        url.toString(),
+        ADDRESS_SEARCH_TIMEOUT_MS,
+      )
+      if (payload.error) throw new Error(`OneMap search error: ${payload.error}`)
+      const results = payload.results ?? []
+      const locations: LocationInput[] = []
+      for (const result of results) {
+        const latitude = Number(result.LATITUDE)
+        const longitude = Number(result.LONGITUDE ?? result.LONGTITUDE)
+        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+          locations.push({
+            latitude,
+            longitude,
+            label: result.SEARCHVAL || result.ADDRESS || query,
+          })
+        }
+      }
+      this.lastSuccessfulRequest = new Date().toISOString()
+      this.lastError = null
+      return locations
+    } catch (error) {
+      this.lastError = this.safeError(error)
+      throw error
+    }
+  }
+
   async searchAddress(query: string): Promise<LocationInput | null> {
     if (!this.isConfigured() || !query.trim()) return null
     const cacheKey = query.trim().toLowerCase()

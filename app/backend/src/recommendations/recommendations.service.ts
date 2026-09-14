@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, Optional } from '@nestjs/common'
+import { BadRequestException, Injectable, Optional, ServiceUnavailableException } from '@nestjs/common'
 import { ConnectorPreference, RankedStation, Station } from '../common/types'
 import { OneMapService, ParkingService, RouteResult } from '../integrations'
 import { StationsService } from '../stations/stations.service'
 import { RecommendationDto } from './dto/recommendation.dto'
 import { DISTANCE_SCALE_KM, resolveRankingWeights } from './ranking-weights'
+import { filterStationsByCorridor } from './corridor-filter'
 import type { RankingFactor, RankingWeightResolution, RankingWeights } from './ranking-weights'
 
 const ROUTE_CONCURRENCY = 4
@@ -23,6 +24,11 @@ interface ConnectorMetrics {
   components: ComponentScores
 }
 
+interface ChargingTimeEstimate {
+  estimatedMinutes: number | null
+  isApproximate: boolean
+}
+
 @Injectable()
 export class RecommendationsService {
   constructor(
@@ -38,6 +44,19 @@ export class RecommendationsService {
     }
 
     const connectorPreference = isConnectorPreference(dto.connector) ? dto.connector : 'Any'
+
+    // Detect corridor-based search: both origin and destination provided
+    const isCorridorSearch =
+      dto.routeOriginLatitude !== undefined &&
+      dto.routeOriginLongitude !== undefined &&
+      dto.routeDestinationLatitude !== undefined &&
+      dto.routeDestinationLongitude !== undefined
+
+    if (isCorridorSearch) {
+      return this.recommendAlongRoute(dto, connectorPreference, rankingResolution)
+    }
+
+    // Existing point-radius search
     const search = await this.stationsService.search({
       query: dto.query,
       latitude: dto.latitude,
@@ -110,6 +129,112 @@ export class RecommendationsService {
     }
   }
 
+  private async recommendAlongRoute(
+    dto: RecommendationDto,
+    connectorPreference: ConnectorPreference,
+    rankingResolution: RankingWeightResolution,
+  ) {
+    const origin = {
+      latitude: dto.routeOriginLatitude!,
+      longitude: dto.routeOriginLongitude!,
+    }
+    const destination = {
+      latitude: dto.routeDestinationLatitude!,
+      longitude: dto.routeDestinationLongitude!,
+    }
+
+    // Validate that origin and destination are different
+    if (
+      Math.abs(origin.latitude - destination.latitude) < 0.0001 &&
+      Math.abs(origin.longitude - destination.longitude) < 0.0001
+    ) {
+      throw new BadRequestException('Origin and destination must be different locations')
+    }
+
+    // Fetch route geometry from OneMap
+    let route: RouteResult
+    try {
+      const routeResult = await this.oneMap.drivingRoute(origin, destination)
+      if (!routeResult) {
+        throw new ServiceUnavailableException('OneMap could not calculate a route between these locations')
+      }
+      route = routeResult
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) throw error
+      throw new ServiceUnavailableException('OneMap driving route is unavailable')
+    }
+
+    // Fetch all stations (no radius limit initially, will filter by corridor)
+    const allStations = await this.stationsService.search({
+      latitude: origin.latitude,
+      longitude: origin.longitude,
+      radiusKm: 50, // Large radius to capture all potential corridor stations
+      connector: connectorPreference === 'Any' ? undefined : connectorPreference,
+      minPowerKw: dto.minPowerKw,
+      maxPrice: dto.maxPrice,
+      availableOnly: dto.availableOnly,
+      operator: dto.operator,
+      includeUnknown: true,
+      limit: 999, // Get all candidates before corridor filtering
+    })
+
+    // Filter stations within corridor distance to the route
+    const corridorStations = filterStationsByCorridor(allStations.stations, route.coordinates)
+
+    if (corridorStations.length === 0) {
+      return {
+        recommended: null,
+        ranked: [],
+        ranking: {
+          weights: rankingResolution.weights,
+          source: rankingResolution.source,
+        },
+        search: {
+          totalMatches: 0,
+          location: origin,
+          dataStatus: allStations.dataStatus,
+        },
+      }
+    }
+
+    // Rank corridor stations using origin distance (Decision 2)
+    // Add distanceKm from origin for each station
+    const stationsWithDistance = corridorStations.map((station) => ({
+      ...station,
+      distanceKm: this.stationsService.distanceKm(origin, station),
+    }))
+
+    const ranked = stationsWithDistance
+      .map((station) =>
+        this.rankStation(
+          station,
+          { ...dto, connector: connectorPreference },
+          null, // No individual route to each station in corridor search
+          rankingResolution,
+        ),
+      )
+      .sort((a, b) => {
+        const scoreDifference =
+          rankingResolution.source === 'preset' ? b.score - a.score : b.scoreExact - a.scoreExact
+        return scoreDifference || a.distanceKm - b.distanceKm || a.id.localeCompare(b.id)
+      })
+      .slice(0, 50) // Cap results same as point-radius search
+
+    return {
+      recommended: ranked[0] ?? null,
+      ranked,
+      ranking: {
+        weights: rankingResolution.weights,
+        source: rankingResolution.source,
+      },
+      search: {
+        totalMatches: corridorStations.length,
+        location: origin,
+        dataStatus: allStations.dataStatus,
+      },
+    }
+  }
+
   rankStation(
     station: Station & { distanceKm?: number },
     dto: RecommendationDto,
@@ -159,6 +284,8 @@ export class RecommendationsService {
     if (connectorPreference === 'Any')
       reasons.unshift(`${connector.type} selected as the best eligible connector`)
 
+    const chargingTime = this.estimateChargingTime(connector)
+
     return {
       ...structuredClone(station),
       selectedConnector: connector.type,
@@ -170,6 +297,8 @@ export class RecommendationsService {
       travelSource: route ? 'OneMap' : 'Straight-line estimate',
       estimatedHourlyCost: metrics.estimatedHourlyCost,
       hourlyCostIncludesParking: metrics.hourlyCostIncludesParking,
+      estimatedChargingTimeMinutes: chargingTime.estimatedMinutes,
+      chargingTimeIsApproximate: chargingTime.isApproximate,
       scoreComponents: metrics.components,
       weightedContributions,
       reasons: reasons.slice(0, 3),
@@ -253,6 +382,42 @@ export class RecommendationsService {
       hourlyCostIncludesParking,
       components: { distance: distanceScore, availability, speed, savings },
     }
+  }
+
+  private estimateChargingTime(
+    connector: Station['connectors'][number],
+    currentBatteryPercent?: number,
+    targetBatteryPercent?: number,
+    batteryCapacityKwh?: number,
+  ): ChargingTimeEstimate {
+    if (
+      currentBatteryPercent === undefined ||
+      targetBatteryPercent === undefined ||
+      currentBatteryPercent < 0 ||
+      currentBatteryPercent > 100 ||
+      targetBatteryPercent < 0 ||
+      targetBatteryPercent > 100
+    ) {
+      return { estimatedMinutes: null, isApproximate: false }
+    }
+
+    if (targetBatteryPercent <= currentBatteryPercent) {
+      return { estimatedMinutes: null, isApproximate: false }
+    }
+
+    const powerKw = connector.powerKw > 0 ? connector.powerKw : null
+    if (powerKw === null) {
+      return { estimatedMinutes: null, isApproximate: false }
+    }
+
+    const DEFAULT_BATTERY_KWH = 60
+    const capacity = batteryCapacityKwh && batteryCapacityKwh > 0 ? batteryCapacityKwh : DEFAULT_BATTERY_KWH
+    const isApproximate = !batteryCapacityKwh || batteryCapacityKwh <= 0
+
+    const energyNeededKwh = (capacity * (targetBatteryPercent - currentBatteryPercent)) / 100
+    const estimatedMinutes = Math.round((energyNeededKwh / powerKw) * 60)
+
+    return { estimatedMinutes, isApproximate }
   }
 }
 

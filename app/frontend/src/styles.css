@@ -95,6 +95,31 @@ select:focus-visible {
   font-size: 12px;
   font-weight: 650;
 }
+.my-vehicle-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #d8ded9;
+  border-radius: 8px;
+  background: transparent;
+  color: #65716a;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.my-vehicle-button:hover {
+  border-color: #99c4a7;
+  color: var(--green);
+  background: #f0f8f2;
+}
+.my-vehicle-button:focus-visible {
+  outline: 3px solid rgba(22, 122, 75, 0.25);
+  outline-offset: 2px;
+}
 .live-indicator {
   margin-left: auto;
   color: #7b847f;
@@ -150,12 +175,19 @@ select:focus-visible {
 }
 .search-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 1.8fr) minmax(180px, 1fr) 112px;
+  grid-template-columns: auto minmax(280px, 1.8fr) minmax(180px, 1fr) 112px;
   align-items: end;
   gap: 12px;
 }
+.search-mode-toggle {
+  grid-row: 1 / 3;
+}
+.search-grid .location-field {
+  min-height: 42px;
+}
 .search-button {
   height: 42px;
+  grid-row: 1 / 3;
 }
 .search-grid .mantine-Input-input {
   min-height: 42px;
@@ -584,7 +616,7 @@ select:focus-visible {
   background: #fafbf9;
   border-radius: 11px;
   display: grid;
-  grid-template-columns: 1.2fr repeat(3, 1fr);
+  grid-template-columns: 1.2fr repeat(4, 1fr);
   gap: 4px;
 }
 .station-metrics > div {
@@ -689,6 +721,45 @@ select:focus-visible {
   gap: 8px;
 }
 .station-actions > :last-child {
+  margin-left: auto;
+}
+.compare-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+  user-select: none;
+}
+.compare-checkbox:hover {
+  background: #f0f3ef;
+}
+.compare-checkbox input {
+  cursor: pointer;
+}
+.compare-checkbox span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #65716a;
+}
+.comparison-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 15px;
+  background: #f0f8f2;
+  border: 1px solid #d9e9dc;
+  border-radius: 12px;
+  margin-bottom: 4px;
+}
+.comparison-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green);
+}
+.comparison-action-bar button {
   margin-left: auto;
 }
 
@@ -939,6 +1010,12 @@ select:focus-visible {
 .legend-you {
   background: #3784cf;
 }
+.legend-destination-route {
+  background: linear-gradient(90deg, #2563eb 0%, #2563eb 40%, transparent 40%, transparent 60%, #2563eb 60%, #2563eb 100%);
+}
+.legend-selected-route {
+  background: #dc2626;
+}
 .map-disclaimer {
   margin-top: 8px;
   color: #818b85;
@@ -1151,6 +1228,192 @@ select:focus-visible {
   margin: 2px 0 0;
   font-size: 8px;
 }
+.charging-time-inputs {
+  margin: 16px 0;
+}
+.input-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.charging-time-result {
+  margin: 10px 0;
+  padding: 11px;
+  border-radius: 10px;
+  background: #f7f8f6;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 10px;
+}
+.charging-time-result svg {
+  width: 16px;
+  color: var(--green);
+  align-self: start;
+  margin-top: 2px;
+}
+.charging-time-result > div {
+  display: grid;
+}
+.charging-time-result span {
+  color: var(--muted);
+  font-size: 8px;
+}
+.charging-time-result b {
+  font-size: 13px;
+  margin: 2px 0 4px;
+}
+.charging-time-result small {
+  color: var(--muted);
+  font-size: 8px;
+}
+.charging-disclaimer {
+  display: block;
+  color: #8a8e87;
+  font-size: 8px;
+  line-height: 1.35;
+  margin-top: 8px;
+}
+.vehicle-profile-form {
+  display: grid;
+  gap: 18px;
+}
+.vehicle-form-field {
+  display: grid;
+  gap: 6px;
+}
+.vehicle-form-field label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #17211d;
+}
+.vehicle-select {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid #d8ded9;
+  border-radius: 8px;
+  background: white;
+  color: #17211d;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.vehicle-select:hover {
+  border-color: #b8c7bd;
+}
+.vehicle-select:focus {
+  outline: 3px solid rgba(22, 122, 75, 0.25);
+  outline-offset: 2px;
+}
+.vehicle-profile-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin: 16px 0 12px;
+}
+.vehicle-profile-note {
+  display: block;
+  color: #8a8e87;
+  font-size: 9px;
+  line-height: 1.4;
+  margin-top: 8px;
+}
+.station-comparison-view {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.comparison-header {
+  flex: 0 0 auto;
+  padding: 20px;
+  border-bottom: 1px solid #e0e5df;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.comparison-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.comparison-table {
+  flex: 1 1 auto;
+  overflow-x: auto;
+  min-height: 0;
+  padding: 20px;
+}
+.comparison-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.comparison-column {
+  flex: 1;
+  min-width: 260px;
+}
+.station-header {
+  padding-bottom: 16px;
+  border-bottom: 2px solid #d9e9dc;
+}
+.station-info h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  letter-spacing: -0.3px;
+}
+.station-address {
+  margin: 0 0 3px;
+  color: #65716a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.station-postal {
+  display: block;
+  color: #8a8e87;
+  font-size: 11px;
+}
+.comparison-rows {
+  display: grid;
+  gap: 16px;
+}
+.comparison-row {
+  display: grid;
+  grid-template-columns: 160px repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+  padding: 14px 0;
+  border-bottom: 1px solid #edf0ed;
+}
+.row-label {
+  font-weight: 600;
+  color: #17211d;
+  font-size: 13px;
+}
+.row-value {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.row-value b {
+  font-size: 14px;
+  color: #17211d;
+  word-break: break-word;
+}
+.row-value small {
+  font-size: 11px;
+  color: #8a8e87;
+  line-height: 1.3;
+}
+.row-value .unavailable {
+  color: #8a8e87;
+  font-style: italic;
+}
+.row-value .available {
+  color: var(--green);
+}
 .toast {
   position: fixed;
   z-index: 200;
@@ -1218,10 +1481,19 @@ select:focus-visible {
     padding-top: 34px;
   }
   .search-grid {
-    grid-template-columns: 1.5fr 1fr;
+    grid-template-columns: auto 1fr;
+  }
+  .search-grid .location-field {
+    grid-column: span 2;
+  }
+  .search-mode-toggle {
+    grid-column: 1 / 3;
+    grid-row: auto;
   }
   .search-button {
     width: 100%;
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 @media (max-width: 620px) {
@@ -1295,6 +1567,13 @@ select:focus-visible {
     padding-left: 0;
     border-left: 0;
     font-size: 11px;
+  }
+  .my-vehicle-button {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  .my-vehicle-button span {
+    display: none;
   }
   .page {
     width: 100%;
@@ -1462,6 +1741,42 @@ select:focus-visible {
   .section-mini-title {
     margin: 22px 0 10px;
     font-size: 13px;
+  }
+  .input-row {
+    grid-template-columns: 1fr;
+  }
+  .vehicle-profile-actions {
+    grid-template-columns: 1fr;
+  }
+  .comparison-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .comparison-action-bar button {
+    margin-left: 0;
+  }
+  .comparison-row {
+    grid-template-columns: 120px 1fr;
+  }
+  .station-comparison-view {
+    inset: 0;
+  }
+  .comparison-header {
+    padding: 14px;
+  }
+  .comparison-header h2 {
+    font-size: 16px;
+  }
+  .comparison-table {
+    padding: 14px;
+  }
+  .comparison-columns {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .comparison-row {
+    gap: 12px;
   }
   .connector-item {
     min-height: 72px;

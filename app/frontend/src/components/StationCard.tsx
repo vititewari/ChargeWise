@@ -9,9 +9,12 @@ import {
   Gauge,
   MapPin,
   Sparkles,
+  Zap,
 } from 'lucide-react'
 import { timeAgo } from '../lib'
 import type { RankedStation } from '../types'
+import { useVehicleProfile } from '../hooks/useVehicleProfile'
+import { estimateChargingTime, formatChargingTime } from '../utils/chargingTime'
 
 interface Props {
   station: RankedStation
@@ -19,6 +22,9 @@ interface Props {
   best?: boolean
   onDetails: (station: RankedStation) => void
   onHover: (id: string) => void
+  onCompareToggle?: (stationId: string, selected: boolean) => void
+  isSelectedForComparison?: boolean
+  canCompare?: boolean
 }
 
 export function getCardRoadTravel(
@@ -32,11 +38,22 @@ export function getCardRoadTravel(
   }
 }
 
-export const StationCard = memo(function StationCard({ station, rank, best, onDetails, onHover }: Props) {
+export const StationCard = memo(function StationCard({
+  station,
+  rank,
+  best,
+  onDetails,
+  onHover,
+  onCompareToggle,
+  isSelectedForComparison,
+  canCompare,
+}: Props) {
+  const { profile } = useVehicleProfile()
   const plug = station.connectors.find((item) => item.type === station.selectedConnector)
   if (!plug) return null
   const isAvailable = plug.status === 'available' && (plug.available ?? 0) > 0
   const roadTravel = getCardRoadTravel(station)
+  const chargingTime = estimateChargingTime(plug.powerKw, profile?.batteryCapacityKwh)
   return (
     <Card
       component="article"
@@ -99,6 +116,19 @@ export const StationCard = memo(function StationCard({ station, rank, best, onDe
                 : 'Charging per hour'}
           </small>
         </div>
+        <div>
+          <Zap size={17} />
+          <b>
+            {chargingTime === null ? 'Unknown' : formatChargingTime(chargingTime)}
+          </b>
+          <small>
+            {chargingTime === null
+              ? 'Power unknown'
+              : profile?.batteryCapacityKwh
+                ? '20–80% (your battery)'
+                : '20–80% (60 kWh est.)'}
+          </small>
+        </div>
       </div>
       <div className="reason-row">
         <div>
@@ -120,6 +150,18 @@ export const StationCard = memo(function StationCard({ station, rank, best, onDe
         </div>
       )}
       <div className="station-actions">
+        {onCompareToggle && (
+          <label className="compare-checkbox">
+            <input
+              type="checkbox"
+              checked={isSelectedForComparison ?? false}
+              onChange={(e) => onCompareToggle(station.id, e.currentTarget.checked)}
+              disabled={!canCompare && !isSelectedForComparison}
+              aria-label={`Compare ${station.name}`}
+            />
+            <span>Compare</span>
+          </label>
+        )}
         <Button
           variant="default"
           size="xs"

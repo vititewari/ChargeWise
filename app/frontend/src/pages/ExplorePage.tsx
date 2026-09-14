@@ -1,11 +1,13 @@
 import { useCallback, useRef, useState } from 'react'
-import { ActionIcon, Alert, Button, Loader, Paper, Select, Stack, TextInput } from '@mantine/core'
-import { AlertTriangle, CircleAlert, LocateFixed, Search } from 'lucide-react'
+import { ActionIcon, Alert, Button, Loader, Paper, SegmentedControl, Select, Stack, TextInput } from '@mantine/core'
+import { AlertTriangle, CircleAlert, LocateFixed, MapPin, Search } from 'lucide-react'
 import { api } from '../api'
 import { ChatWidget } from '../components/ChatWidget'
+import { LocationInput } from '../components/LocationInput'
 import { MapPanel } from '../components/MapPanel'
 import { StationCard } from '../components/StationCard'
 import { StationDetailsModal } from '../components/StationDetailsModal'
+import { StationComparisonView } from '../components/StationComparisonView'
 import type {
   AiRecommendationFilters,
   ChatMessage,
@@ -38,7 +40,9 @@ function rankingExplanation(policy: RankingPolicy, priority: RankingPriority) {
 }
 
 export function ExplorePage({ notify }: { notify: (message: string) => void }) {
+  const [searchMode, setSearchMode] = useState<'point' | 'route'>('point')
   const [locationQuery, setLocationQuery] = useState('')
+  const [destinationQuery, setDestinationQuery] = useState('')
   const [priority, setPriority] = useState<RankingPriority>('Balanced')
   const [customRankingPreferences, setCustomRankingPreferences] = useState<RankingPreferences | null>(null)
   const [appliedFilters, setAppliedFilters] = useState<AiRecommendationFilters>({
@@ -61,6 +65,7 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
   const routeRequestId = useRef(0)
   const recommendationRequestId = useRef(0)
   const [searchCoords, setSearchCoords] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [destinationCoords, setDestinationCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [currentLocation, setCurrentLocation] = useState<{
     latitude: number
     longitude: number
@@ -72,6 +77,9 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
   const [chatLoading, setChatLoading] = useState(false)
   const [chatStatus, setChatStatus] = useState('')
   const [chatError, setChatError] = useState('')
+  const [selectedForComparison, setSelectedForComparison] = useState<Set<string>>(new Set())
+  const [showComparison, setShowComparison] = useState(false)
+  const [destinationRoute, setDestinationRoute] = useState<DrivingRoute | null>(null)
 
   const requestCurrentLocation = useCallback(
     () =>
@@ -152,25 +160,79 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
     setRouteError('')
   }, [])
 
+  const toggleCompareStation = useCallback((stationId: string, selected: boolean) => {
+    setSelectedForComparison((current) => {
+      const next = new Set(current)
+      if (selected && next.size < 3) {
+        next.add(stationId)
+      } else if (!selected) {
+        next.delete(stationId)
+      }
+      return next
+    })
+  }, [])
+
   const runSearch = async () => {
-    if (!locationQuery.trim() && !searchCoords) {
-      setError('Enter an address or postal code, or use your current location.')
-      return
+    if (searchMode === 'route') {
+      if ((!locationQuery.trim() && !searchCoords) || (!destinationQuery.trim() && !destinationCoords)) {
+        setError('Enter both an origin and destination address or postal code.')
+        return
+      }
+    } else {
+      if (!locationQuery.trim() && !searchCoords) {
+        setError('Enter an address or postal code, or use your current location.')
+        return
+      }
     }
+
     const requestId = ++recommendationRequestId.current
     setLoading(true)
     setError('')
+    setSelectedForComparison(new Set())
+    setShowComparison(false)
     routeRequestId.current += 1
     setRoute(null)
     setRouteStationId(undefined)
     setRouteLoading(false)
     setRouteError('')
+    setDestinationRoute(null)
     try {
+      let originCoords = searchCoords
+      let destCoords = destinationCoords
+
+      // Resolve addresses if needed
+      if (searchMode === 'route') {
+        if (!originCoords && locationQuery.trim()) {
+          const resolved = await api.resolveLocation(locationQuery)
+          originCoords = { latitude: resolved.latitude, longitude: resolved.longitude }
+          setSearchCoords(originCoords)
+        }
+        if (!destCoords && destinationQuery.trim()) {
+          const resolved = await api.resolveLocation(destinationQuery)
+          destCoords = { latitude: resolved.latitude, longitude: resolved.longitude }
+          setDestinationCoords(destCoords)
+        }
+
+        // Fetch destination route for visualization
+        if (originCoords && destCoords) {
+          try {
+            const destinationRt = await api.getDrivingRoute(originCoords, destCoords)
+            setDestinationRoute(destinationRt)
+          } catch {
+            setDestinationRoute(null)
+          }
+        }
+      }
+
       const ranked = await api.recommend({
         ...appliedFilters,
-        query: locationQuery || undefined,
-        latitude: searchCoords?.latitude,
-        longitude: searchCoords?.longitude,
+        query: searchMode === 'point' ? (locationQuery || undefined) : undefined,
+        latitude: originCoords?.latitude ?? searchCoords?.latitude,
+        longitude: originCoords?.longitude ?? searchCoords?.longitude,
+        routeOriginLatitude: searchMode === 'route' ? originCoords?.latitude : undefined,
+        routeOriginLongitude: searchMode === 'route' ? originCoords?.longitude : undefined,
+        routeDestinationLatitude: searchMode === 'route' ? destCoords?.latitude : undefined,
+        routeDestinationLongitude: searchMode === 'route' ? destCoords?.longitude : undefined,
         rankingPriority: customRankingPreferences ? appliedFilters.rankingPriority : priority,
         rankingPreferences: customRankingPreferences ?? undefined,
       })
@@ -180,7 +242,7 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
       setRecommendation(ranked)
       setAppliedFilters((current) => ({
         ...current,
-        query: locationQuery || undefined,
+        query: searchMode === 'point' ? (locationQuery || undefined) : undefined,
         rankingPriority: customRankingPreferences ? current.rankingPriority : priority,
       }))
       if (ranked.ranking.source === 'preset') setCustomRankingPreferences(null)
@@ -307,23 +369,67 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
 
       <Paper className="search-card" radius="lg" shadow="sm" withBorder>
         <div className="search-grid">
-          <TextInput
-            className="location-field"
-            label="Where do you need to charge?"
-            value={locationQuery}
-            onChange={(event) => {
-              setLocationQuery(event.currentTarget.value)
+          <SegmentedControl
+            className="search-mode-toggle"
+            value={searchMode}
+            onChange={(value) => {
+              setSearchMode(value as 'point' | 'route')
+              setLocationQuery('')
+              setDestinationQuery('')
               setSearchCoords(null)
+              setDestinationCoords(null)
               setError('')
             }}
-            placeholder="Address or postal code"
-            leftSection={<Search size={18} />}
-            rightSection={
-              <ActionIcon variant="subtle" onClick={useMyLocation} aria-label="Use current location">
-                <LocateFixed size={18} />
-              </ActionIcon>
-            }
+            data={[
+              { label: 'Near me', value: 'point' },
+              { label: 'Along a route', value: 'route' },
+            ]}
           />
+          {searchMode === 'point' ? (
+            <LocationInput
+              className="location-field"
+              label="Where do you need to charge?"
+              value={locationQuery}
+              onChange={(text, coords) => {
+                setLocationQuery(text)
+                setSearchCoords(coords)
+                setError('')
+              }}
+              placeholder="Address or postal code"
+              leftSection={<Search size={18} />}
+              onMyLocationClick={useMyLocation}
+              myLocationIcon={<LocateFixed size={18} />}
+            />
+          ) : (
+            <>
+              <LocationInput
+                className="location-field"
+                label="Starting point"
+                value={locationQuery}
+                onChange={(text, coords) => {
+                  setLocationQuery(text)
+                  setSearchCoords(coords)
+                  setError('')
+                }}
+                placeholder="Address or postal code"
+                leftSection={<MapPin size={18} />}
+                onMyLocationClick={useMyLocation}
+                myLocationIcon={<LocateFixed size={18} />}
+              />
+              <LocationInput
+                className="location-field"
+                label="Destination"
+                value={destinationQuery}
+                onChange={(text, coords) => {
+                  setDestinationQuery(text)
+                  setDestinationCoords(coords)
+                  setError('')
+                }}
+                placeholder="Address or postal code"
+                leftSection={<MapPin size={18} />}
+              />
+            </>
+          )}
           <Select
             label="Ranking priority"
             value={customRankingPreferences ? 'Custom' : priority}
@@ -415,6 +521,20 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
           </div>
           <div className="results-layout">
             <Stack className="station-list" gap={12}>
+              {selectedForComparison.size > 0 && (
+                <div className="comparison-action-bar">
+                  <span className="comparison-count">
+                    {selectedForComparison.size} station{selectedForComparison.size !== 1 ? 's' : ''} selected
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={() => setShowComparison(true)}
+                    disabled={selectedForComparison.size < 2}
+                  >
+                    Compare selected ({selectedForComparison.size})
+                  </Button>
+                </div>
+              )}
               {ranked.map((station, index) => (
                 <StationCard
                   key={station.id}
@@ -423,6 +543,9 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
                   best={index === 0}
                   onDetails={selectStation}
                   onHover={selectMapStation}
+                  onCompareToggle={toggleCompareStation}
+                  isSelectedForComparison={selectedForComparison.has(station.id)}
+                  canCompare={selectedForComparison.size < 3}
                 />
               ))}
             </Stack>
@@ -433,7 +556,9 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
                 onSelect={selectStation}
                 location={searchResult!.location}
                 currentLocation={currentLocation ?? undefined}
-                routeOrigin={routeOrigin}
+                routeOrigin={searchMode === 'route' ? searchCoords ?? undefined : undefined}
+                routeDestination={searchMode === 'route' ? destinationCoords ?? undefined : undefined}
+                destinationRoute={destinationRoute}
                 route={route}
                 routeStation={routeStation}
                 routeLoading={routeLoading}
@@ -467,6 +592,13 @@ export function ExplorePage({ notify }: { notify: (message: string) => void }) {
           routeVisible={routeStationId === details.id && route !== null}
           routeLoading={routeStationId === details.id && routeLoading}
           routeError={routeStationId === details.id ? routeError : ''}
+        />
+      )}
+
+      {showComparison && selectedForComparison.size >= 2 && (
+        <StationComparisonView
+          stations={ranked.filter((station) => selectedForComparison.has(station.id))}
+          onBack={() => setShowComparison(false)}
         />
       )}
     </div>

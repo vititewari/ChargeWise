@@ -1,11 +1,20 @@
-import { Badge, Button, Card } from '@mantine/core'
+import { Badge, Button, Card, NumberInput } from '@mantine/core'
 import { BatteryCharging, Database, MapPin, Navigation, PlugZap } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { timeAgo } from '../lib'
 import type { RankedStation } from '../types'
+import { useVehicleProfile } from '../hooks/useVehicleProfile'
 import { Modal } from './Modal'
 
 export function getRouteButtonLabel(routeVisible: boolean) {
   return routeVisible ? 'Change route' : 'Show route'
+}
+
+function formatChargingTime(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`
 }
 
 export function StationDetailsModal({
@@ -23,6 +32,46 @@ export function StationDetailsModal({
   routeLoading?: boolean
   routeError?: string
 }) {
+  const { profile } = useVehicleProfile()
+  const [currentBattery, setCurrentBattery] = useState<number | undefined>(20)
+  const [targetBattery, setTargetBattery] = useState<number | undefined>(80)
+  const [batteryCapacity, setBatteryCapacity] = useState<number | undefined>(undefined)
+
+  useEffect(() => {
+    if (profile?.batteryCapacityKwh) {
+      setBatteryCapacity(profile.batteryCapacityKwh)
+    }
+  }, [profile?.batteryCapacityKwh])
+
+  const estimateChargingTime = (): number | null => {
+    if (
+      currentBattery === undefined ||
+      targetBattery === undefined ||
+      currentBattery < 0 ||
+      currentBattery > 100 ||
+      targetBattery < 0 ||
+      targetBattery > 100 ||
+      targetBattery <= currentBattery
+    ) {
+      return null
+    }
+
+    const selectedConnector = station.connectors.find((c) => c.type === station.selectedConnector)
+    if (!selectedConnector || selectedConnector.powerKw <= 0) return null
+
+    const DEFAULT_CAPACITY = 60
+    const capacity = batteryCapacity === undefined || batteryCapacity <= 0 ? DEFAULT_CAPACITY : batteryCapacity
+
+    const energyNeededKwh = (capacity * (targetBattery - currentBattery)) / 100
+    const estimatedMinutes = Math.round((energyNeededKwh / selectedConnector.powerKw) * 60)
+
+    return estimatedMinutes
+  }
+
+  const chargingTimeEstimate = estimateChargingTime()
+  const isApproximate =
+    batteryCapacity === undefined || batteryCapacity <= 0
+
   return (
     <Modal
       title={station.name}
@@ -70,6 +119,55 @@ export function StationDetailsModal({
               </Badge>
             </Card>
           ))}
+        </div>
+        <div className="charging-time-inputs">
+          <h3 className="section-mini-title">Estimate charging time</h3>
+          <div className="input-row">
+            <NumberInput
+              label="Current battery %"
+              value={currentBattery}
+              onChange={(val) => setCurrentBattery(typeof val === 'number' ? val : undefined)}
+              min={0}
+              max={100}
+              step={1}
+              placeholder="0-100"
+            />
+            <NumberInput
+              label="Target battery %"
+              value={targetBattery}
+              onChange={(val) => setTargetBattery(typeof val === 'number' ? val : undefined)}
+              min={0}
+              max={100}
+              step={1}
+              placeholder="0-100"
+            />
+            <NumberInput
+              label="Battery capacity (kWh)"
+              value={batteryCapacity}
+              onChange={(val) => setBatteryCapacity(typeof val === 'number' ? val : undefined)}
+              min={1}
+              step={1}
+              placeholder="Leave empty for 60 kWh default"
+            />
+          </div>
+          {chargingTimeEstimate !== null && (
+            <Card className="charging-time-result" padding={0}>
+              <BatteryCharging />
+              <div>
+                <span>Estimated charging time</span>
+                <b>{formatChargingTime(chargingTimeEstimate)}</b>
+                {isApproximate && (
+                  <small>Approximate (using 60 kWh default, edit in My Vehicle)</small>
+                )}
+                {!isApproximate && profile?.batteryCapacityKwh && (
+                  <small>Using your vehicle profile ({profile.batteryCapacityKwh} kWh)</small>
+                )}
+              </div>
+            </Card>
+          )}
+          <small className="charging-disclaimer">
+            Estimate based on rated power. Real charging slows significantly above 80% battery.
+          </small>
         </div>
         <div className="details-grid">
           <Card padding={0}>
